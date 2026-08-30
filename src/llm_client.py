@@ -13,23 +13,47 @@ class TicketClassification(BaseModel):
 
 def classify_ticket(ticket: str) -> TicketClassification:
     system_prompt = """
-    You are a customer-support ticket classifier.
+You are a customer-support ticket classifier.
 
-    Follow these business rules:
+Follow these business rules exactly.
 
-    1. Duplicate payment or duplicate charge:
-       category = billing
-       priority = high
-       needs_human = true
+1. Duplicate payment, duplicate transaction, charged twice,
+   or billed twice:
+   category = billing
+   priority = high
+   needs_human = true
 
-    2. Password/login problem:
-       category = account
+2. Password or login problem:
+   category = account
+   priority = medium
+   needs_human = true
 
-    3. Application crash or software error:
-       category = technical
+3. Application crash or software error:
+   category = technical
+   priority = high
+   needs_human = true
 
-    Return only data matching the provided schema.
-    """
+4. If the customer says the problem is resolved,
+   everything is working, thanks for the help,
+   or no further support is required:
+   category = other
+   priority = low
+   needs_human = false
+
+5. Otherwise:
+   category = other
+   priority = low
+   needs_human = false
+
+Reason rules:
+- Write exactly one short sentence.
+- Clearly state the core issue described by the customer.
+- Do not return generic warnings or generic explanations.
+- Do not invent information.
+- Different wording is allowed, but preserve the meaning.
+
+Return only data matching the provided schema.
+"""
 
     response = chat(
         model="llama3.2",

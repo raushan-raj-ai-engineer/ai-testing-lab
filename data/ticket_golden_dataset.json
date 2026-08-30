@@ -1,0 +1,53 @@
+[
+    {
+        "id": "T001",
+        "ticket": "My credit card was charged twice for the same order.",
+        "expected_category": "billing",
+        "expected_priority": "high",
+        "expected_needs_human": true,
+        "expected_reason": "The customer reports being charged twice for one purchase."
+    },
+    {
+        "id": "T002",
+        "ticket": "I forgot my password and cannot login.",
+        "expected_category": "account",
+        "expected_reason": "The customer cannot access their account because of a password or login problem."
+    },
+    {
+        "id": "T003",
+        "ticket": "The application crashes every time I open settings.",
+        "expected_category": "technical",
+        "expected_reason": "The customer reports a technical problem where the application crashes."
+    },
+    {
+        "id": "T004",
+        "ticket": "Thanks for your help. Everything is working now.",
+        "expected_category": "other",
+        "expected_priority": "low",
+        "expected_reason": "The customer is not reporting an active problem and indicates that everything is working."
+    },
+    {
+        "id": "T005",
+        "ticket": "I see two transactions for one purchase.",
+        "expected_category": "billing",
+        "expected_priority": "high",
+        "expected_needs_human": true,
+        "expected_reason": "The customer reports duplicate billing for one purchase."
+    },
+    {
+        "id": "T006",
+        "ticket": "Why did you bill me two times?",
+        "expected_category": "billing",
+        "expected_priority": "high",
+        "expected_needs_human": true,
+        "expected_reason": "The customer reports being billed twice."
+    },
+    {
+        "id": "T007",
+        "ticket": "There are duplicate transactions on my card.",
+        "expected_category": "billing",
+        "expected_priority": "high",
+        "expected_needs_human": true,
+        "expected_reason": "The customer reports duplicate transactions on their card."
+    }
+]
