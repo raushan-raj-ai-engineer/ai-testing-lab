@@ -1,0 +1,148 @@
+name: Agent Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+
+jobs:
+
+  deterministic-agent-quality:
+
+    name: Deterministic Agent Quality
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install \
+              pytest==9.1.1 \
+              anyio==4.14.2 \
+              deepeval==4.2.0 \
+              mcp \
+              ollama
+          fi
+
+      - name: Run deterministic quality gate
+        run: |
+          pytest \
+            tests/browser_agent/test_agent_dataset_quality.py \
+            tests/browser_agent/test_browser_agent_advanced.py \
+            -m "not agent_live" \
+            -v
+
+
+  live-agent-quality:
+
+    name: Live Agent Quality
+
+    # Real LLM/browser gate is intentionally not run
+    # on every PR because it is slower and more variable.
+    if: github.event_name == 'workflow_dispatch'
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 30
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install \
+              pytest==9.1.1 \
+              anyio==4.14.2 \
+              deepeval==4.2.0 \
+              mcp \
+              ollama
+          fi
+
+      - name: Install Chromium
+        run: |
+          npx -y playwright@latest install --with-deps chromium
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          sleep 5
+
+      - name: Pull local evaluator model
+        run: |
+          ollama pull llama3.2
+
+      - name: Start Playwright MCP
+        run: |
+          npx -y @playwright/mcp@latest \
+            --port 8931 \
+            --headless \
+            --isolated \
+            > /tmp/playwright-mcp.log 2>&1 &
+
+          sleep 8
+
+      - name: Run live agent release gate
+        run: |
+          python scripts/run_agent_quality_gate.py \
+            --dataset config/agent_quality_dataset.json \
+            --baseline config/agent_quality_baseline.json \
+            --report reports/agent_quality_report.json
+
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-quality-report
+          path: reports/agent_quality_report.json
+
+      - name: Print Ollama logs on failure
+        if: failure()
+        run: |
+          cat /tmp/ollama.log || true
+
+      - name: Print MCP logs on failure
+        if: failure()
+        run: |
+          cat /tmp/playwright-mcp.log || true

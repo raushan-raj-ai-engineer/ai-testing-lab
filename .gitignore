@@ -13,3 +13,7 @@ build/
 # Local AI testing runtime artifacts
 .deepeval/
 .playwright-mcp/
+
+# Agent quality generated reports
+reports/*.json
+

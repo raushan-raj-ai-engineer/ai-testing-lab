@@ -480,37 +480,144 @@ def find_todo_checkbox_line(
     snapshot: str,
 ) -> str | None:
     """
-    Snapshot example:
+    Find the checkbox that belongs to one specific todo.
 
-        checkbox "Toggle Todo" [ref=e21]
-        generic [ref=e22]: Buy milk
+    Supports Playwright refs such as:
 
-    Returns checkbox line belonging to Buy milk.
+        e21
+        f1e21
+        f2e105
+        other future non-space ref formats
+
+    We first try to stay inside the matching listitem block.
+    If that structure is unavailable, we use a small
+    proximity fallback.
     """
 
     lines = snapshot.splitlines()
 
-    for index, line in enumerate(lines):
-        if todo_name.lower() not in line.lower():
-            continue
+    todo_name_lower = todo_name.casefold()
 
-        start_index = max(
+    # =====================================================
+    # Find lines containing the requested todo text
+    # =====================================================
+
+    todo_indexes: list[int] = []
+
+    for index, line in enumerate(lines):
+        if todo_name_lower in line.casefold():
+            todo_indexes.append(index)
+
+    if not todo_indexes:
+        return None
+
+    # =====================================================
+    # Try each matching occurrence
+    # =====================================================
+
+    for todo_index in todo_indexes:
+        # -------------------------------------------------
+        # Find nearest parent listitem
+        # -------------------------------------------------
+
+        listitem_index: int | None = None
+
+        for index in range(
+            todo_index,
+            -1,
+            -1,
+        ):
+            line = lines[index]
+
+            if "listitem" in line.lower():
+                listitem_index = index
+                break
+
+        # -------------------------------------------------
+        # If listitem exists, search only inside that block
+        # -------------------------------------------------
+
+        if listitem_index is not None:
+            listitem_line = lines[listitem_index]
+
+            base_indent = len(listitem_line) - len(listitem_line.lstrip())
+
+            block_end = len(lines)
+
+            for index in range(
+                listitem_index + 1,
+                len(lines),
+            ):
+                candidate = lines[index]
+
+                if not candidate.strip():
+                    continue
+
+                candidate_indent = len(candidate) - len(candidate.lstrip())
+
+                # Another sibling/top-level node means
+                # this listitem block has finished.
+                if candidate_indent <= base_indent:
+                    block_end = index
+                    break
+
+            block = lines[listitem_index:block_end]
+
+            for line in block:
+                lower_line = line.casefold()
+
+                if (
+                    "checkbox" in lower_line
+                    and "mark all as complete" not in lower_line
+                ):
+                    return line
+
+        # =================================================
+        # Fallback
+        #
+        # Some MCP snapshot versions may not preserve the
+        # exact listitem hierarchy we expect.
+        #
+        # Search close to the todo text.
+        # =================================================
+
+        search_start = max(
             0,
-            index - 5,
+            todo_index - 12,
         )
 
-        previous_lines = lines[start_index:index]
+        search_end = min(
+            len(lines),
+            todo_index + 6,
+        )
 
-        for previous_line in reversed(previous_lines):
-            previous_lower = previous_line.lower()
+        candidates: list[tuple[int, str]] = []
 
-            if "checkbox" not in previous_lower:
+        for index in range(
+            search_start,
+            search_end,
+        ):
+            line = lines[index]
+
+            lower_line = line.casefold()
+
+            if "checkbox" not in lower_line:
                 continue
 
-            if "mark all as complete" in previous_lower:
+            if "mark all as complete" in lower_line:
                 continue
 
-            return previous_line
+            distance = abs(index - todo_index)
+
+            candidates.append((
+                distance,
+                line,
+            ))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0])
+
+            return candidates[0][1]
 
     return None
 
@@ -520,7 +627,21 @@ def find_todo_checkbox_ref(
     snapshot: str,
 ) -> str | None:
     """
-    Return the dynamic ref of a todo checkbox.
+    Return the dynamic Playwright accessibility ref
+    for the requested todo checkbox.
+
+    DO NOT assume refs always look like:
+
+        e21
+
+    Playwright MCP may return:
+
+        e21
+        f1e21
+        f2e104
+
+    Therefore capture any valid non-space value inside
+    [ref=...].
     """
 
     checkbox_line = find_todo_checkbox_line(
@@ -532,11 +653,86 @@ def find_todo_checkbox_ref(
         return None
 
     match = re.search(
-        r"\[ref=(e\d+)\]",
+        r"\[ref=([^\]\s]+)\]",
         checkbox_line,
     )
 
-    if not match:
+    if match is None:
+        return None
+
+    return match.group(1)
+
+
+def find_todo_input_line(
+    snapshot: str,
+) -> str | None:
+    """
+    Find TodoMVC's add-new-todo textbox line
+    from the Playwright accessibility snapshot.
+
+    Supports refs such as:
+        e8
+        f1e8
+        f2e8
+    """
+
+    lines = snapshot.splitlines()
+
+    # Prefer the known TodoMVC textbox.
+    preferred_keywords = (
+        "what needs to be done",
+        "new todo",
+    )
+
+    for line in lines:
+        lower_line = line.casefold()
+
+        if "textbox" not in lower_line:
+            continue
+
+        if "[ref=" not in lower_line:
+            continue
+
+        if any(keyword in lower_line for keyword in preferred_keywords):
+            return line
+
+    # Fallback:
+    # TodoMVC normally has one editable textbox.
+    for line in lines:
+        lower_line = line.casefold()
+
+        if "textbox" in lower_line and "[ref=" in lower_line:
+            return line
+
+    return None
+
+
+def find_todo_input_ref(
+    snapshot: str,
+) -> str | None:
+    """
+    Return exact dynamic Playwright ref for the
+    TodoMVC new-todo textbox.
+
+    Examples:
+        e8
+        f1e8
+        f2e8
+    """
+
+    textbox_line = find_todo_input_line(
+        snapshot=snapshot,
+    )
+
+    if textbox_line is None:
+        return None
+
+    match = re.search(
+        r"\[ref=([^\]\s]+)\]",
+        textbox_line,
+    )
+
+    if match is None:
         return None
 
     return match.group(1)
@@ -653,35 +849,188 @@ def validate_browser_action(
     snapshot: str,
 ) -> None:
     """
-    Deterministic semantic validation before
-    browser execution.
+    Validate an AI-selected browser action before
+    allowing it to reach Playwright MCP.
+
+    This validator separates:
+
+    1. Tool selection
+    2. Argument correctness
+    3. Element grounding
+    4. Business/goal correctness
+
+    Supported subgoals:
+
+        Add <todo> to the todo list
+
+        Mark <todo> as complete
+
+    Important:
+    We do NOT silently correct the AI action here.
+
+    If the AI chooses the wrong target/ref/text/tool,
+    this function raises ValueError.
+
+    choose_valid_browser_action() can then give the
+    error back to the LLM and allow it to re-plan.
     """
 
     # =====================================================
-    # ADD TODO VALIDATION
+    # BASIC VALIDATION
+    # =====================================================
+
+    if not goal.strip():
+        raise ValueError("Browser action goal cannot be empty")
+
+    if not tool_name.strip():
+        raise ValueError("Browser tool name cannot be empty")
+
+    if not isinstance(
+        arguments,
+        dict,
+    ):
+        raise ValueError("Browser tool arguments must be a dictionary")
+
+    if not snapshot.strip():
+        raise ValueError("Browser snapshot cannot be empty")
+
+    # =====================================================
+    # ADD TODO GOAL
+    #
+    # Example:
+    #
+    # Add Buy milk to the todo list
     # =====================================================
 
     add_todo = extract_todo_from_add_goal(goal)
 
     if add_todo is not None:
+        # -------------------------------------------------
+        # 1. Correct tool
+        # -------------------------------------------------
+
         if tool_name != "browser_type":
             raise ValueError("Adding a todo requires browser_type")
 
-        if arguments.get("text") != add_todo:
+        # -------------------------------------------------
+        # 2. Exact todo text
+        #
+        # Agent must not:
+        #
+        # Buy milk-123  -> Buy milk
+        #
+        # or rewrite/summarize the task.
+        # -------------------------------------------------
+
+        actual_text = arguments.get("text")
+
+        if actual_text != add_todo:
             raise ValueError(f"Type only '{add_todo}' into the todo textbox")
 
+        # -------------------------------------------------
+        # 3. Must submit
+        #
+        # browser_type(..., submit=True)
+        #
+        # Otherwise todo may only be typed but not added.
+        # -------------------------------------------------
+
         if arguments.get("submit") is not True:
-            raise ValueError("Adding a todo requires submit=True")
+            raise ValueError("browser_type must use submit=True when adding a todo")
+
+        # -------------------------------------------------
+        # 4. Determine exact textbox ref from CURRENT
+        #    accessibility snapshot.
+        #
+        # Never hardcode:
+        #
+        # e8
+        # f1e8
+        # f2e8
+        # -------------------------------------------------
+
+        expected_target = find_todo_input_ref(
+            snapshot=snapshot,
+        )
+
+        if expected_target is None:
+            raise ValueError(
+                "Could not find the new-todo textbox in the current browser snapshot"
+            )
+
+        actual_target = arguments.get("target")
+
+        print("\nTodo textbox grounding check:")
+
+        print(
+            "Todo:",
+            add_todo,
+        )
+
+        print(
+            "Expected textbox target:",
+            expected_target,
+        )
+
+        print(
+            "AI selected target:",
+            actual_target,
+        )
+
+        # -------------------------------------------------
+        # 5. Exact element grounding
+        #
+        # Examples we must reject:
+        #
+        # expected f1e8
+        # AI       f1e11
+        #
+        # expected f2e8
+        # AI       generic[f2e7]
+        # -------------------------------------------------
+
+        if actual_target != expected_target:
+            raise ValueError(
+                "For adding todo "
+                f"'{add_todo}', the correct "
+                "textbox target is "
+                f"{expected_target}, "
+                "but you selected "
+                f"{actual_target}. "
+                "Use browser_type with target "
+                f"{expected_target}."
+            )
+
+        # -------------------------------------------------
+        # ADD action is valid
+        # -------------------------------------------------
+
+        return
 
     # =====================================================
-    # COMPLETE TODO VALIDATION
+    # MARK TODO COMPLETE GOAL
+    #
+    # Example:
+    #
+    # Mark Buy milk as complete
     # =====================================================
 
     completion_todo = extract_todo_from_completion_goal(goal)
 
     if completion_todo is not None:
+        # -------------------------------------------------
+        # 1. Correct tool
+        # -------------------------------------------------
+
         if tool_name != "browser_click":
-            raise ValueError("Completing a todo requires browser_click")
+            raise ValueError("Marking a todo complete requires browser_click")
+
+        # -------------------------------------------------
+        # 2. Left click only
+        #
+        # button may be omitted by MCP/LLM because left
+        # click is normally the default.
+        # -------------------------------------------------
 
         button = arguments.get(
             "button",
@@ -689,20 +1038,41 @@ def validate_browser_action(
         )
 
         if button != "left":
-            raise ValueError("Normal checkbox interaction requires button='left'")
+            raise ValueError("Todo checkbox must use button='left'")
+        # -------------------------------------------------
+        # 3. Reject double click
+        # -------------------------------------------------
 
-        selected_target = arguments.get("target")
+        double_click = arguments.get(
+            "doubleClick",
+            False,
+        )
 
-        if not selected_target:
-            raise ValueError("Completing a todo requires a target")
+        if double_click is True:
+            raise ValueError("Todo checkbox should use a single click, not doubleClick")
+
+        # -------------------------------------------------
+        # 4. Find checkbox belonging specifically
+        #    to requested todo.
+        #
+        # This deliberately avoids:
+        #
+        # Mark all as complete
+        # All filter
+        # Active filter
+        # Completed filter
+        # todo text/generic node
+        # -------------------------------------------------
 
         expected_target = find_todo_checkbox_ref(
-            todo_name=completion_todo,
+            todo_name=(completion_todo),
             snapshot=snapshot,
         )
 
         if expected_target is None:
             raise ValueError(f"Could not find checkbox for todo '{completion_todo}'")
+
+        actual_target = arguments.get("target")
 
         print("\nTodo grounding check:")
 
@@ -718,19 +1088,38 @@ def validate_browser_action(
 
         print(
             "AI selected target:",
-            selected_target,
+            actual_target,
         )
 
-        if selected_target != expected_target:
+        # -------------------------------------------------
+        # 5. Exact checkbox grounding
+        # -------------------------------------------------
+
+        if actual_target != expected_target:
             raise ValueError(
                 f"For todo '{completion_todo}', "
-                f"the correct checkbox target "
-                f"is {expected_target}, "
-                f"but you selected "
-                f"{selected_target}. "
-                f"Use browser_click with "
-                f"target {expected_target}."
+                "the correct checkbox target is "
+                f"{expected_target}, "
+                "but you selected "
+                f"{actual_target}. "
+                "Use browser_click with target "
+                f"{expected_target}."
             )
+
+        # -------------------------------------------------
+        # COMPLETE action is valid
+        # -------------------------------------------------
+
+        return
+
+    # =====================================================
+    # UNSUPPORTED GOAL
+    #
+    # Important:
+    # Don't guess what the user/agent meant.
+    # =====================================================
+
+    raise ValueError(f"Unsupported browser subgoal: {goal}")
 
 
 # =========================================================

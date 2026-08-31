@@ -1,0 +1,54 @@
+{
+    "dataset_name": "todomvc_browser_agent_v1",
+    "release_thresholds": {
+        "min_pass_rate": 1.0,
+        "min_average_decision_efficiency": 0.3,
+        "max_total_execution_failures": 3,
+        "max_stuck_loop_cases": 0,
+        "max_regressions": 0
+    },
+    "scenarios": [
+        {
+            "id": "todo_buy_milk",
+            "todo_text": "Buy milk",
+            "max_steps": 5,
+            "max_execution_retries": 1,
+            "thresholds": {
+                "min_progress_score": 1.0,
+                "max_executed_steps": 2,
+                "min_decision_efficiency": 0.3,
+                "max_execution_failures": 1,
+                "max_duplicate_decisions": 1,
+                "allow_stuck_loop": false
+            }
+        },
+        {
+            "id": "todo_qa_report",
+            "todo_text": "Prepare QA report",
+            "max_steps": 5,
+            "max_execution_retries": 1,
+            "thresholds": {
+                "min_progress_score": 1.0,
+                "max_executed_steps": 2,
+                "min_decision_efficiency": 0.3,
+                "max_execution_failures": 1,
+                "max_duplicate_decisions": 1,
+                "allow_stuck_loop": false
+            }
+        },
+        {
+            "id": "todo_sprint_42",
+            "todo_text": "Review sprint 42",
+            "max_steps": 5,
+            "max_execution_retries": 1,
+            "thresholds": {
+                "min_progress_score": 1.0,
+                "max_executed_steps": 2,
+                "min_decision_efficiency": 0.3,
+                "max_execution_failures": 1,
+                "max_duplicate_decisions": 1,
+                "allow_stuck_loop": false
+            }
+        }
+    ]
+}

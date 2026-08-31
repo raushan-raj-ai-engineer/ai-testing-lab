@@ -833,3 +833,67 @@ def test_stuck_agent_fails_quality_gate():
     )
 
     assert passes_advanced_quality_gate(report) is False
+
+
+def test_checkbox_grounding_supports_frame_style_refs():
+
+    snapshot = """
+    - listitem [ref=f1e35]:
+        - checkbox "Toggle Todo" [ref=f1e36]
+        - generic [ref=f1e37]: Prepare QA report-3ded3c
+    """
+
+    ref = browser_agent.find_todo_checkbox_ref(
+        todo_name=("Prepare QA report-3ded3c"),
+        snapshot=snapshot,
+    )
+
+    assert ref == "f1e36"
+
+
+def test_validator_accepts_frame_style_checkbox_ref():
+
+    snapshot = """
+    - checkbox "Mark all as complete" [ref=f1e16]
+    - listitem [ref=f1e35]:
+        - checkbox "Toggle Todo" [ref=f1e36]
+        - generic [ref=f1e37]: Prepare QA report-3ded3c
+    - link "Completed" [ref=f1e40]
+    """
+
+    # Correct ref should pass
+    browser_agent.validate_browser_action(
+        goal=("Mark Prepare QA report-3ded3c as complete"),
+        tool_name="browser_click",
+        arguments={
+            "target": "f1e36",
+            "button": "left",
+        },
+        snapshot=snapshot,
+    )
+
+
+def test_validator_rejects_frame_style_text_ref():
+
+    snapshot = """
+    - checkbox "Mark all as complete" [ref=f1e16]
+    - listitem [ref=f1e35]:
+        - checkbox "Toggle Todo" [ref=f1e36]
+        - generic [ref=f1e37]: Prepare QA report-3ded3c
+    - link "Completed" [ref=f1e40]
+    """
+
+    with pytest.raises(
+        ValueError,
+        match=("correct checkbox target is f1e36"),
+    ):
+        browser_agent.validate_browser_action(
+            goal=("Mark Prepare QA report-3ded3c as complete"),
+            tool_name="browser_click",
+            arguments={
+                # text/generic ref — wrong
+                "target": "f1e37",
+                "button": "left",
+            },
+            snapshot=snapshot,
+        )

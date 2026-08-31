@@ -1,0 +1,7 @@
+{
+    "dataset_name": "todomvc_browser_agent_v1",
+    "min_pass_rate": 1.0,
+    "min_average_decision_efficiency": 0.3,
+    "max_total_execution_failures": 3,
+    "max_stuck_loop_cases": 0
+}
