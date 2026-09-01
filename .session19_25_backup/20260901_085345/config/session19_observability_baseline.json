@@ -1,0 +1,6 @@
+{
+  "total_latency_ms": null,
+  "browser_agent_latency_ms": null,
+  "mcp_total_latency_ms": null,
+  "max_regression_ratio": 1.5
+}

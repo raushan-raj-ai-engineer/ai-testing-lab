@@ -1,0 +1,30 @@
+name: Sessions 19-25 AI Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  fast-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Sessions 19-25 deterministic tests
+        run: |
+          pytest \
+            tests/observability \
+            tests/reliability \
+            tests/eval_pipeline \
+            tests/agentic_rag \
+            tests/ai_api_testing \
+            tests/final_project \
+            tests/interview_prep \
+            -m "not observability_live and not reliability_live" -v

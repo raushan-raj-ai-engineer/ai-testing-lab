@@ -1,0 +1,40 @@
+{
+  "components": [
+    {
+      "name": "functional_agent",
+      "passed": true,
+      "score": 1.0,
+      "critical": true
+    },
+    {
+      "name": "guardrails",
+      "passed": true,
+      "score": 1.0,
+      "critical": true
+    },
+    {
+      "name": "observability",
+      "passed": true,
+      "score": 0.9,
+      "critical": true
+    },
+    {
+      "name": "reliability",
+      "passed": true,
+      "score": 0.9,
+      "critical": true
+    },
+    {
+      "name": "agentic_rag",
+      "passed": true,
+      "score": 0.9,
+      "critical": true
+    },
+    {
+      "name": "ai_api",
+      "passed": true,
+      "score": 1.0,
+      "critical": true
+    }
+  ]
+}

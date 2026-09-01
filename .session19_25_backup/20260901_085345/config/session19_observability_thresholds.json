@@ -1,0 +1,10 @@
+{
+  "max_total_latency_ms": 300000,
+  "max_browser_agent_latency_ms": 270000,
+  "max_single_mcp_call_latency_ms": 30000,
+  "max_failed_spans": 2,
+  "max_mcp_failure_rate": 0.34,
+  "max_retry_overhead_ratio": 0.6,
+  "require_usage_metrics": false,
+  "max_estimated_cost_usd": null
+}
