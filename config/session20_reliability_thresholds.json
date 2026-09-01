@@ -1,0 +1,7 @@
+{
+  "min_pass_rate": 0.8,
+  "max_flake_rate": 0.2,
+  "max_latency_cv": 0.6,
+  "max_average_retry_overhead": 0.6,
+  "max_consecutive_failures": 1
+}

@@ -17,3 +17,4 @@ build/
 # Agent quality generated reports
 reports/*.json
 
+reports/*.html

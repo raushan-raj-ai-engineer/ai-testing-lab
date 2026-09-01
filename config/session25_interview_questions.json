@@ -1,0 +1,275 @@
+{
+  "questions": [
+    {
+      "id": "q01",
+      "topic": "llm",
+      "difficulty": "senior",
+      "question": "How do you test probabilistic LLM output without making tests flaky?",
+      "key_points": [
+        "deterministic assertions",
+        "semantic metrics",
+        "golden dataset",
+        "thresholds"
+      ],
+      "model_answer": "Separate deterministic assertions from semantic metrics, use a representative golden dataset, calibrate thresholds, and avoid exact-string checks for probabilistic output."
+    },
+    {
+      "id": "q02",
+      "topic": "rag",
+      "difficulty": "senior",
+      "question": "What is the difference between retrieval quality and answer grounding?",
+      "key_points": [
+        "precision@k",
+        "recall@k",
+        "grounding",
+        "retrieved context"
+      ],
+      "model_answer": "Retrieval quality checks whether the correct documents were retrieved using Precision@K and Recall@K; grounding checks whether answer claims are supported by retrieved context."
+    },
+    {
+      "id": "q03",
+      "topic": "agent",
+      "difficulty": "senior",
+      "question": "How do you test an autonomous browser agent beyond task completion?",
+      "key_points": [
+        "tool grounding",
+        "decision retries",
+        "execution failures",
+        "trajectory",
+        "quality gate"
+      ],
+      "model_answer": "Validate tool/element grounding, separate decision retries from execution failures, inspect trajectory/step efficiency, detect loops and use dataset-level quality gates."
+    },
+    {
+      "id": "q04",
+      "topic": "agent",
+      "difficulty": "senior",
+      "question": "Why should decision retry and execution retry be separate?",
+      "key_points": [
+        "semantic invalidity",
+        "re-planning",
+        "transient failure",
+        "same action"
+      ],
+      "model_answer": "Semantic invalidity needs re-planning with feedback; a transient tool failure may retry the same already-valid action."
+    },
+    {
+      "id": "q05",
+      "topic": "mcp",
+      "difficulty": "senior",
+      "question": "How would you test an MCP tool integration?",
+      "key_points": [
+        "tool discovery",
+        "schema",
+        "arguments",
+        "execution result",
+        "task completion"
+      ],
+      "model_answer": "Test runtime discovery/schema, argument normalization/validation, execution behavior, and separately verify business task completion."
+    },
+    {
+      "id": "q06",
+      "topic": "multi_agent",
+      "difficulty": "senior",
+      "question": "What must be tested in a multi-agent system besides each agent individually?",
+      "key_points": [
+        "routing",
+        "handoff",
+        "context preservation",
+        "dependencies",
+        "loops"
+      ],
+      "model_answer": "Test routing, handoff contracts, context preservation, dependency order, downstream interpretation, failure propagation and loops."
+    },
+    {
+      "id": "q07",
+      "topic": "safety",
+      "difficulty": "senior",
+      "question": "Where should prompt injection be blocked in an agent system?",
+      "key_points": [
+        "input boundary",
+        "handoff boundary",
+        "tool boundary",
+        "least privilege"
+      ],
+      "model_answer": "Use layered defense: input guard before planning, handoff validation at agent boundaries, and least-privilege policy before tool execution."
+    },
+    {
+      "id": "q08",
+      "topic": "observability",
+      "difficulty": "senior",
+      "question": "An agent passes functionally but becomes 5x slower. Is that a release pass?",
+      "key_points": [
+        "operational quality",
+        "latency budget",
+        "regression baseline",
+        "release gate"
+      ],
+      "model_answer": "Not necessarily. Functional correctness is one gate; operational quality uses latency budgets and regression baselines and can block release."
+    },
+    {
+      "id": "q09",
+      "topic": "reliability",
+      "difficulty": "senior",
+      "question": "How do you measure agent flakiness?",
+      "key_points": [
+        "repeated runs",
+        "pass rate",
+        "flake rate",
+        "latency variability",
+        "retry overhead"
+      ],
+      "model_answer": "Repeat identical scenarios and measure pass rate, mixed outcomes, latency variability, retry overhead and failure streaks."
+    },
+    {
+      "id": "q10",
+      "topic": "ci",
+      "difficulty": "senior",
+      "question": "Would you run live LLM/browser-agent tests on every pull request?",
+      "key_points": [
+        "fast deterministic",
+        "pull request",
+        "scheduled",
+        "manual",
+        "live integration"
+      ],
+      "model_answer": "Keep fast deterministic tests on PRs and expensive live LLM/MCP/browser tests on scheduled, manual or release pipelines."
+    },
+    {
+      "id": "q11",
+      "topic": "api",
+      "difficulty": "senior",
+      "question": "How is AI API testing different from ordinary API testing?",
+      "key_points": [
+        "contract",
+        "probabilistic output",
+        "latency",
+        "semantic quality",
+        "resilience"
+      ],
+      "model_answer": "Test ordinary schema/status/performance plus probabilistic quality, safety, model latency, malformed outputs and provider resilience."
+    },
+    {
+      "id": "q12",
+      "topic": "evaluation",
+      "difficulty": "senior",
+      "question": "When should LLM-as-Judge not be the hard release gate?",
+      "key_points": [
+        "ground truth",
+        "calibration",
+        "false negative",
+        "deterministic"
+      ],
+      "model_answer": "When deterministic ground truth exists or the judge is not calibrated; test the evaluator itself and prefer deterministic evidence for hard gates."
+    },
+    {
+      "id": "q13",
+      "topic": "architecture",
+      "difficulty": "senior",
+      "question": "Describe a production AI testing architecture you have built.",
+      "key_points": [
+        "LLM",
+        "RAG",
+        "MCP",
+        "agent",
+        "guardrails",
+        "observability",
+        "CI"
+      ],
+      "model_answer": "Layer LLM/RAG evaluations, MCP/tool testing, agent trajectory tests, multi-agent handoffs, deterministic guardrails, observability/reliability and CI release gates."
+    },
+    {
+      "id": "q14",
+      "topic": "rag",
+      "difficulty": "senior",
+      "question": "What if an LLM faithfulness judge fails but deterministic ground truth proves support?",
+      "key_points": [
+        "evaluator calibration",
+        "diagnostic",
+        "ground truth",
+        "do not lower threshold"
+      ],
+      "model_answer": "Treat it as evaluator calibration, inspect the judge, keep ground truth as the hard gate and do not lower thresholds just to get green."
+    },
+    {
+      "id": "q15",
+      "topic": "agent",
+      "difficulty": "senior",
+      "question": "How do you detect an agent stuck loop?",
+      "key_points": [
+        "repeated decision",
+        "signature",
+        "threshold",
+        "step limit"
+      ],
+      "model_answer": "Normalize decision signatures, detect consecutive repetitions over a threshold, and keep a max-step guard."
+    },
+    {
+      "id": "q16",
+      "topic": "observability",
+      "difficulty": "senior",
+      "question": "Why should token or cost metrics be nullable instead of zero when unavailable?",
+      "key_points": [
+        "unknown",
+        "zero",
+        "misleading",
+        "telemetry"
+      ],
+      "model_answer": "Zero means measured zero usage; unavailable means unknown. Using zero for missing telemetry is misleading and corrupts cost gates."
+    },
+    {
+      "id": "q17",
+      "topic": "reliability",
+      "difficulty": "senior",
+      "question": "What does latency coefficient of variation tell you?",
+      "key_points": [
+        "standard deviation",
+        "mean",
+        "variability",
+        "stability"
+      ],
+      "model_answer": "CV is standard deviation divided by mean and normalizes latency variability, making stability comparable across scenarios with different average latency."
+    },
+    {
+      "id": "q18",
+      "topic": "agentic_rag",
+      "difficulty": "senior",
+      "question": "What extra tests are needed for Agentic RAG compared with normal RAG?",
+      "key_points": [
+        "routing",
+        "retrieval decision",
+        "tool use",
+        "citations",
+        "grounding"
+      ],
+      "model_answer": "Test whether retrieval was invoked when needed, routing/tool decisions, retrieval metrics, citations and grounding, plus loops and unnecessary retrieval."
+    },
+    {
+      "id": "q19",
+      "topic": "api",
+      "difficulty": "senior",
+      "question": "Which performance metric is more useful than average latency for an AI API?",
+      "key_points": [
+        "p95",
+        "tail latency",
+        "percentile",
+        "user experience"
+      ],
+      "model_answer": "P95 or P99 exposes tail latency and better represents slow user experiences than the average alone."
+    },
+    {
+      "id": "q20",
+      "topic": "release",
+      "difficulty": "senior",
+      "question": "How do you combine many AI quality signals into a release decision?",
+      "key_points": [
+        "critical gates",
+        "thresholds",
+        "dataset",
+        "regressions",
+        "hard fail"
+      ],
+      "model_answer": "Use component-specific thresholds, critical hard gates for safety/functionality, dataset-level aggregation and explicit regression checks rather than one blended score."
+    }
+  ]
+}
