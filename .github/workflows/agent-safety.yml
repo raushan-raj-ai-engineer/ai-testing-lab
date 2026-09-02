@@ -15,6 +15,15 @@ jobs:
 
   # =========================================================
   # DETERMINISTIC SAFETY GATE
+  #
+  # Runs automatically on push / pull request.
+  #
+  # Does NOT start:
+  # - Ollama server
+  # - Chromium
+  # - Playwright MCP
+  #
+  # These tests should remain fast and deterministic.
   # =========================================================
 
   deterministic-safety:
@@ -23,8 +32,12 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    timeout-minutes: 15
+
     env:
       PYTHONPATH: .
+
+      # Keep one consistent MCP URL across local and CI.
       PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
 
     steps:
@@ -43,22 +56,38 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
+
         with:
           python-version: "3.13"
 
 
       # -----------------------------------------------------
-      # DEPENDENCIES
+      # INSTALL DEPENDENCIES
+      #
+      # requirements.txt is the source of truth.
+      #
+      # Expected important packages:
+      #
+      # pytest>=8,<10
+      # mcp>=1.28,<2
+      # ollama>=0.4,<1
+      # anyio>=4,<5
+      # deepeval>=4,<5
       # -----------------------------------------------------
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+
+          python -m pip install \
+            -r requirements.txt
 
 
       # -----------------------------------------------------
       # VERIFY ENVIRONMENT
+      #
+      # This catches dependency problems BEFORE pytest
+      # collection.
       # -----------------------------------------------------
 
       - name: Verify Python environment
@@ -68,25 +97,42 @@ jobs:
           echo "======================================"
 
           python --version
+
           python -m pip --version
+
           python -m pytest --version
 
+          echo
+          echo "======================================"
+          echo "AI TESTING DEPENDENCIES"
+          echo "======================================"
+
           python -c "
-          import mcp
+          import anyio
+          import deepeval
+
+          from ollama import chat
+
           from mcp import ClientSession
           from mcp.types import TextContent
+          from mcp.client.streamable_http import streamable_http_client
 
-          print('MCP import OK')
-          print('ClientSession import OK')
-          print('TextContent import OK')
+          print('AnyIO import             : OK')
+          print('DeepEval import          : OK')
+          print('Ollama Python SDK        : OK')
+          print('MCP ClientSession        : OK')
+          print('MCP TextContent          : OK')
+          print('MCP Streamable HTTP      : OK')
           "
 
 
       # -----------------------------------------------------
       # DETERMINISTIC GUARDRAIL TESTS
       #
-      # DeepEval pytest plugin is intentionally disabled here.
-      # These are deterministic security tests.
+      # DeepEval pytest plugin is disabled because this
+      # particular suite does not require semantic evaluation.
+      #
+      # DeepEval remains installed for other AI test suites.
       # -----------------------------------------------------
 
       - name: Run deterministic guardrail tests
@@ -99,7 +145,7 @@ jobs:
 
 
       # -----------------------------------------------------
-      # ADVERSARIAL RELEASE GATE
+      # ADVERSARIAL DATASET / RELEASE GATE
       # -----------------------------------------------------
 
       - name: Run adversarial safety release gate
@@ -111,14 +157,19 @@ jobs:
   # =========================================================
   # LIVE SAFETY GATE
   #
-  # Runs ONLY manually through workflow_dispatch.
+  # Runs ONLY manually:
+  #
+  # GitHub
+  # → Actions
+  # → Agent Safety Gate
+  # → Run workflow
   #
   # Uses:
   # - Ollama
   # - llama3.2
   # - Chromium
   # - Playwright MCP
-  # - Real MCP ClientSession
+  # - real MCP ClientSession
   # =========================================================
 
   live-safety:
@@ -135,7 +186,8 @@ jobs:
       PYTHONPATH: .
 
       # IMPORTANT:
-      # Use localhost, not 127.0.0.1.
+      # localhost prevents the MCP host validation issue
+      # we saw with 127.0.0.1.
       PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
 
       RUN_GUARDRAIL_LIVE: "1"
@@ -157,6 +209,7 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
+
         with:
           python-version: "3.13"
 
@@ -167,6 +220,7 @@ jobs:
 
       - name: Setup Node
         uses: actions/setup-node@v4
+
         with:
           node-version: "22"
 
@@ -178,11 +232,13 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+
+          python -m pip install \
+            -r requirements.txt
 
 
       # -----------------------------------------------------
-      # VERIFY PYTHON / MCP
+      # VERIFY PYTHON DEPENDENCIES
       # -----------------------------------------------------
 
       - name: Verify Python and MCP environment
@@ -192,17 +248,25 @@ jobs:
           echo "======================================"
 
           python --version
+
           python -m pip --version
+
           python -m pytest --version
 
           python -c "
-          from mcp import ClientSession
-          from mcp.client.streamable_http import streamable_http_client
-          from mcp.types import TextContent
+          import anyio
 
-          print('MCP ClientSession OK')
-          print('Streamable HTTP client OK')
-          print('TextContent OK')
+          from ollama import chat
+
+          from mcp import ClientSession
+          from mcp.types import TextContent
+          from mcp.client.streamable_http import streamable_http_client
+
+          print('AnyIO                   : OK')
+          print('Ollama Python SDK       : OK')
+          print('MCP ClientSession       : OK')
+          print('MCP TextContent         : OK')
+          print('MCP Streamable HTTP     : OK')
           "
 
 
@@ -241,17 +305,53 @@ jobs:
             > /tmp/ollama.log \
             2>&1 &
 
+          echo $! > /tmp/ollama.pid
+
           sleep 5
 
 
       # -----------------------------------------------------
-      # VERIFY OLLAMA
+      # VERIFY OLLAMA PROCESS
       # -----------------------------------------------------
 
       - name: Verify Ollama
         run: |
+          echo "======================================"
+          echo "OLLAMA"
+          echo "======================================"
+
           ollama --version
+
           ollama list
+
+          if [ -f /tmp/ollama.pid ]; then
+
+            OLLAMA_PID=$(cat /tmp/ollama.pid)
+
+            echo
+            echo "Ollama PID: ${OLLAMA_PID}"
+
+            if kill -0 "${OLLAMA_PID}" 2>/dev/null; then
+
+              echo "Ollama process is running"
+
+            else
+
+              echo "Ollama process is NOT running"
+
+              cat /tmp/ollama.log || true
+
+              exit 1
+
+            fi
+
+          else
+
+            echo "Ollama PID file missing"
+
+            exit 1
+
+          fi
 
 
       # -----------------------------------------------------
@@ -263,19 +363,26 @@ jobs:
           ollama pull llama3.2
 
           echo
-          echo "Installed Ollama models:"
+          echo "======================================"
+          echo "AVAILABLE OLLAMA MODELS"
+          echo "======================================"
+
           ollama list
 
 
       # -----------------------------------------------------
       # START PLAYWRIGHT MCP
       #
-      # Explicitly:
+      # IMPORTANT:
       #
-      # host = localhost
-      # allowed-hosts = localhost
+      # --host localhost
+      # --allowed-hosts localhost
       #
-      # This prevents the 403 Forbidden host-validation issue.
+      # prevents the previous:
+      #
+      # 403 Forbidden
+      #
+      # problem.
       # -----------------------------------------------------
 
       - name: Start Playwright MCP
@@ -303,50 +410,63 @@ jobs:
       - name: Verify Playwright MCP process
         run: |
           echo "======================================"
-          echo "PLAYWRIGHT MCP LOG"
+          echo "PLAYWRIGHT MCP"
           echo "======================================"
-
-          cat /tmp/playwright-mcp.log || true
 
           echo
           echo "MCP URL:"
           echo "${PLAYWRIGHT_MCP_URL}"
 
+          echo
+          echo "MCP startup log:"
+          echo
+
+          cat /tmp/playwright-mcp.log || true
+
+          echo
+
           if [ -f /tmp/playwright-mcp.pid ]; then
+
             MCP_PID=$(cat /tmp/playwright-mcp.pid)
 
-            echo
             echo "MCP PID: ${MCP_PID}"
 
             if kill -0 "${MCP_PID}" 2>/dev/null; then
+
               echo "Playwright MCP process is running"
+
             else
+
               echo "Playwright MCP process is NOT running"
+
               exit 1
+
             fi
+
           else
+
             echo "MCP PID file missing"
+
             exit 1
+
           fi
 
 
       # -----------------------------------------------------
       # LIVE MCP GUARDRAIL TESTS
       #
-      # Important:
+      # Disable all third-party pytest plugins so DeepEval
+      # does not slow/hang this MCP test suite.
       #
-      # Disable automatic pytest plugin loading because
-      # DeepEval was causing unnecessary startup/import delay.
-      #
-      # Explicitly load AnyIO because tests use:
-      #
-      # @pytest.mark.anyio
+      # Then explicitly enable AnyIO only.
       # -----------------------------------------------------
 
       - name: Run live Playwright MCP guardrail tests
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
           RUN_GUARDRAIL_LIVE: "1"
+
           PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
 
         run: |
@@ -359,14 +479,13 @@ jobs:
 
       # -----------------------------------------------------
       # LIVE AI SAFETY RELEASE GATE
-      #
-      # This remains separate from MCP connectivity tests.
       # -----------------------------------------------------
 
       - name: Run live AI safety release gate
         env:
-          PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
           RUN_GUARDRAIL_LIVE: "1"
+
+          PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
 
         run: |
           python \
@@ -376,6 +495,9 @@ jobs:
 
       # -----------------------------------------------------
       # UPLOAD OLLAMA LOG
+      #
+      # Always upload so evidence remains available even
+      # when tests fail.
       # -----------------------------------------------------
 
       - name: Upload Ollama logs
@@ -385,8 +507,11 @@ jobs:
 
         with:
           name: agent-safety-ollama-logs
+
           path: /tmp/ollama.log
+
           if-no-files-found: warn
+
           retention-days: 7
 
 
@@ -401,13 +526,16 @@ jobs:
 
         with:
           name: agent-safety-playwright-mcp-logs
+
           path: /tmp/playwright-mcp.log
+
           if-no-files-found: warn
+
           retention-days: 7
 
 
       # -----------------------------------------------------
-      # PRINT OLLAMA LOG ON FAILURE
+      # FAILURE DEBUGGING
       # -----------------------------------------------------
 
       - name: Print Ollama logs on failure
@@ -418,13 +546,10 @@ jobs:
           echo "======================================"
           echo "OLLAMA FAILURE LOG"
           echo "======================================"
+          echo
 
           cat /tmp/ollama.log || true
 
-
-      # -----------------------------------------------------
-      # PRINT MCP LOG ON FAILURE
-      # -----------------------------------------------------
 
       - name: Print Playwright MCP logs on failure
         if: failure()
@@ -434,5 +559,6 @@ jobs:
           echo "======================================"
           echo "PLAYWRIGHT MCP FAILURE LOG"
           echo "======================================"
+          echo
 
           cat /tmp/playwright-mcp.log || true
