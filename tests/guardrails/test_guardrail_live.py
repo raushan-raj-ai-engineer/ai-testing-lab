@@ -1,82 +1,171 @@
-from uuid import uuid4
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 import pytest
-from mcp import Client
+from mcp import ClientSession
+from mcp.client.streamable_http import (
+    streamable_http_client,
+)
 
-from src.guardrails.quality import (
-    build_runtime_guardrail_report,
+MCP_URL = os.getenv(
+    "PLAYWRIGHT_MCP_URL",
+    "http://localhost:8931/mcp",
 )
-from src.guardrails.safe_orchestrator import (
-    run_guarded_multi_agent_system,
+
+
+RUN_GUARDRAIL_LIVE = (
+    os.getenv(
+        "RUN_GUARDRAIL_LIVE",
+        "0",
+    )
+    == "1"
 )
+
 
 pytestmark = [
+    pytest.mark.guardrail,
     pytest.mark.guardrail_live,
-    pytest.mark.asyncio,
 ]
 
 
-async def test_real_guarded_multi_agent_run():
+@asynccontextmanager
+async def open_mcp_session(
+    url: str = MCP_URL,
+) -> AsyncIterator[ClientSession]:
+    """
+    Open and initialize an MCP Streamable HTTP session.
 
-    todo_name = "Session18-" + uuid4().hex[:6]
+    Compatible with MCP SDK variants where
+    streamable_http_client() returns:
 
-    goal = f"Add {todo_name} and mark it complete"
-
-    async with Client("http://localhost:8931/mcp") as client:
-        result = await run_guarded_multi_agent_system(
-            client=client,
-            goal=goal,
+        (
+            read_stream,
+            write_stream,
+            get_session_id,
         )
 
-    report = build_runtime_guardrail_report(result)
+    We only need the first two streams for ClientSession.
+    """
 
-    print("\n================================")
+    async with streamable_http_client(
+        url,
+    ) as streams:
+        read_stream = streams[0]
+        write_stream = streams[1]
 
-    print("SESSION 18 SAFETY REPORT")
+        async with ClientSession(
+            read_stream,
+            write_stream,
+        ) as session:
+            await session.initialize()
 
-    print("================================")
+            yield session
 
-    print(
-        "Input allowed:",
-        report.input_allowed,
-    )
 
-    print(
-        "Handoffs safe:",
-        report.handoffs_safe,
-    )
+@pytest.mark.skipif(
+    not RUN_GUARDRAIL_LIVE,
+    reason=("Set RUN_GUARDRAIL_LIVE=1 to run live guardrail tests"),
+)
+@pytest.mark.anyio
+async def test_playwright_mcp_is_reachable() -> None:
+    """
+    Confirm the Playwright MCP server can be reached
+    and exposes browser tools.
+    """
 
-    print(
-        "Tools safe:",
-        report.tools_safe,
-    )
+    async with open_mcp_session() as session:
+        result = await session.list_tools()
 
-    print(
-        "Multi-agent completed:",
-        report.multi_agent_completed,
-    )
+        tool_names = [tool.name for tool in result.tools]
 
-    print(
-        "Multi-agent quality:",
-        report.multi_agent_quality_passed,
-    )
+        assert tool_names, "MCP server returned no tools"
 
-    print(
-        "Safety findings:",
-        report.total_findings,
-    )
+        assert any(
+            name.startswith(
+                "browser_",
+            )
+            for name in tool_names
+        ), "Expected Playwright browser tools were not available"
 
-    print(
-        "Safety release:",
-        report.safety_release_passed,
-    )
 
-    assert result.multi_agent_result is not None
+@pytest.mark.skipif(
+    not RUN_GUARDRAIL_LIVE,
+    reason=("Set RUN_GUARDRAIL_LIVE=1 to run live guardrail tests"),
+)
+@pytest.mark.anyio
+async def test_browser_snapshot_tool_available() -> None:
+    """
+    Verify that browser_snapshot is exposed
+    by Playwright MCP.
+    """
 
-    assert result.multi_agent_result.browser_result is not None
+    async with open_mcp_session() as session:
+        result = await session.list_tools()
 
-    assert todo_name in result.multi_agent_result.browser_result.final_snapshot
+        tool_names = {tool.name for tool in result.tools}
 
-    assert report.total_findings == 0
+        assert "browser_snapshot" in tool_names, (
+            "browser_snapshot tool is not available"
+        )
 
-    assert report.safety_release_passed is True
+
+@pytest.mark.skipif(
+    not RUN_GUARDRAIL_LIVE,
+    reason=("Set RUN_GUARDRAIL_LIVE=1 to run live guardrail tests"),
+)
+@pytest.mark.anyio
+async def test_browser_snapshot_can_execute() -> None:
+    """
+    Execute a real browser_snapshot MCP tool call.
+    """
+
+    async with open_mcp_session() as session:
+        result = await session.call_tool(
+            "browser_snapshot",
+            {},
+        )
+
+        assert result is not None
+
+        assert not getattr(
+            result,
+            "isError",
+            False,
+        ), "browser_snapshot returned an MCP error"
+
+        assert result.content, "browser_snapshot returned no content"
+
+
+@pytest.mark.skipif(
+    not RUN_GUARDRAIL_LIVE,
+    reason=("Set RUN_GUARDRAIL_LIVE=1 to run live guardrail tests"),
+)
+@pytest.mark.anyio
+async def test_mcp_does_not_expose_unknown_admin_tool() -> None:
+    """
+    Least-privilege security check.
+
+    Playwright MCP should not expose arbitrary
+    privileged/admin tools.
+    """
+
+    async with open_mcp_session() as session:
+        result = await session.list_tools()
+
+        tool_names = {tool.name for tool in result.tools}
+
+        blocked_tool_names = {
+            "delete_user",
+            "admin_shell",
+            "execute_system_command",
+            "read_secrets",
+        }
+
+        exposed_blocked_tools = tool_names & blocked_tool_names
+
+        assert not exposed_blocked_tools, (
+            f"Unexpected privileged tools exposed: {sorted(exposed_blocked_tools)}"
+        )

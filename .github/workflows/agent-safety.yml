@@ -11,41 +11,119 @@ on:
 
   workflow_dispatch:
 
-
 jobs:
+
+  # =========================================================
+  # DETERMINISTIC SAFETY GATE
+  # =========================================================
 
   deterministic-safety:
 
+    name: Deterministic Agent Safety
+
     runs-on: ubuntu-latest
+
+    env:
+      PYTHONPATH: .
+      PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
 
     steps:
 
-      - name: Checkout
+      # -----------------------------------------------------
+      # CHECKOUT
+      # -----------------------------------------------------
+
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # -----------------------------------------------------
+      # PYTHON
+      # -----------------------------------------------------
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Install dependencies
+
+      # -----------------------------------------------------
+      # DEPENDENCIES
+      # -----------------------------------------------------
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
-      - name: Run guardrail tests
+
+      # -----------------------------------------------------
+      # VERIFY ENVIRONMENT
+      # -----------------------------------------------------
+
+      - name: Verify Python environment
         run: |
-          pytest tests/guardrails \
+          echo "======================================"
+          echo "PYTHON ENVIRONMENT"
+          echo "======================================"
+
+          python --version
+          python -m pip --version
+          python -m pytest --version
+
+          python -c "
+          import mcp
+          from mcp import ClientSession
+          from mcp.types import TextContent
+
+          print('MCP import OK')
+          print('ClientSession import OK')
+          print('TextContent import OK')
+          "
+
+
+      # -----------------------------------------------------
+      # DETERMINISTIC GUARDRAIL TESTS
+      #
+      # DeepEval pytest plugin is intentionally disabled here.
+      # These are deterministic security tests.
+      # -----------------------------------------------------
+
+      - name: Run deterministic guardrail tests
+        run: |
+          python -m pytest \
+            -p no:deepeval \
+            tests/guardrails \
             -m "guardrail and not guardrail_live" \
             -v
 
-      - name: Run adversarial release gate
-        run: |
-          PYTHONPATH=. \
-          python scripts/run_session18_guardrail_gate.py
 
+      # -----------------------------------------------------
+      # ADVERSARIAL RELEASE GATE
+      # -----------------------------------------------------
+
+      - name: Run adversarial safety release gate
+        run: |
+          python \
+            scripts/run_session18_guardrail_gate.py
+
+
+  # =========================================================
+  # LIVE SAFETY GATE
+  #
+  # Runs ONLY manually through workflow_dispatch.
+  #
+  # Uses:
+  # - Ollama
+  # - llama3.2
+  # - Chromium
+  # - Playwright MCP
+  # - Real MCP ClientSession
+  # =========================================================
 
   live-safety:
+
+    name: Live Agent Safety
 
     if: github.event_name == 'workflow_dispatch'
 
@@ -53,55 +131,308 @@ jobs:
 
     timeout-minutes: 30
 
+    env:
+      PYTHONPATH: .
+
+      # IMPORTANT:
+      # Use localhost, not 127.0.0.1.
+      PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
+
+      RUN_GUARDRAIL_LIVE: "1"
+
+
     steps:
 
-      - name: Checkout
+      # -----------------------------------------------------
+      # CHECKOUT
+      # -----------------------------------------------------
+
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # -----------------------------------------------------
+      # PYTHON
+      # -----------------------------------------------------
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
+
+      # -----------------------------------------------------
+      # NODE
+      # -----------------------------------------------------
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install dependencies
+
+      # -----------------------------------------------------
+      # PYTHON DEPENDENCIES
+      # -----------------------------------------------------
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
+
+
+      # -----------------------------------------------------
+      # VERIFY PYTHON / MCP
+      # -----------------------------------------------------
+
+      - name: Verify Python and MCP environment
+        run: |
+          echo "======================================"
+          echo "PYTHON / MCP ENVIRONMENT"
+          echo "======================================"
+
+          python --version
+          python -m pip --version
+          python -m pytest --version
+
+          python -c "
+          from mcp import ClientSession
+          from mcp.client.streamable_http import streamable_http_client
+          from mcp.types import TextContent
+
+          print('MCP ClientSession OK')
+          print('Streamable HTTP client OK')
+          print('TextContent OK')
+          "
+
+
+      # -----------------------------------------------------
+      # INSTALL CHROMIUM
+      # -----------------------------------------------------
 
       - name: Install Chromium
         run: |
           npx -y playwright@latest \
-            install --with-deps chromium
+            install \
+            --with-deps \
+            chromium
+
+
+      # -----------------------------------------------------
+      # INSTALL OLLAMA
+      # -----------------------------------------------------
 
       - name: Install Ollama
         run: |
           curl -fsSL \
-            https://ollama.com/install.sh | sh
+            https://ollama.com/install.sh \
+            | sh
+
+
+      # -----------------------------------------------------
+      # START OLLAMA
+      # -----------------------------------------------------
 
       - name: Start Ollama
         run: |
+          echo "Starting Ollama..."
+
           ollama serve \
-            > /tmp/ollama.log 2>&1 &
+            > /tmp/ollama.log \
+            2>&1 &
+
           sleep 5
+
+
+      # -----------------------------------------------------
+      # VERIFY OLLAMA
+      # -----------------------------------------------------
+
+      - name: Verify Ollama
+        run: |
+          ollama --version
+          ollama list
+
+
+      # -----------------------------------------------------
+      # PULL MODEL
+      # -----------------------------------------------------
+
+      - name: Pull llama3.2
+        run: |
           ollama pull llama3.2
+
+          echo
+          echo "Installed Ollama models:"
+          ollama list
+
+
+      # -----------------------------------------------------
+      # START PLAYWRIGHT MCP
+      #
+      # Explicitly:
+      #
+      # host = localhost
+      # allowed-hosts = localhost
+      #
+      # This prevents the 403 Forbidden host-validation issue.
+      # -----------------------------------------------------
 
       - name: Start Playwright MCP
         run: |
+          echo "Starting Playwright MCP..."
+
           npx -y @playwright/mcp@latest \
+            --host localhost \
             --port 8931 \
+            --allowed-hosts localhost \
             --headless \
             --isolated \
-            > /tmp/mcp.log 2>&1 &
+            > /tmp/playwright-mcp.log \
+            2>&1 &
+
+          echo $! > /tmp/playwright-mcp.pid
+
           sleep 8
 
-      - name: Run live safety gate
+
+      # -----------------------------------------------------
+      # VERIFY MCP PROCESS
+      # -----------------------------------------------------
+
+      - name: Verify Playwright MCP process
         run: |
-          PYTHONPATH=. \
+          echo "======================================"
+          echo "PLAYWRIGHT MCP LOG"
+          echo "======================================"
+
+          cat /tmp/playwright-mcp.log || true
+
+          echo
+          echo "MCP URL:"
+          echo "${PLAYWRIGHT_MCP_URL}"
+
+          if [ -f /tmp/playwright-mcp.pid ]; then
+            MCP_PID=$(cat /tmp/playwright-mcp.pid)
+
+            echo
+            echo "MCP PID: ${MCP_PID}"
+
+            if kill -0 "${MCP_PID}" 2>/dev/null; then
+              echo "Playwright MCP process is running"
+            else
+              echo "Playwright MCP process is NOT running"
+              exit 1
+            fi
+          else
+            echo "MCP PID file missing"
+            exit 1
+          fi
+
+
+      # -----------------------------------------------------
+      # LIVE MCP GUARDRAIL TESTS
+      #
+      # Important:
+      #
+      # Disable automatic pytest plugin loading because
+      # DeepEval was causing unnecessary startup/import delay.
+      #
+      # Explicitly load AnyIO because tests use:
+      #
+      # @pytest.mark.anyio
+      # -----------------------------------------------------
+
+      - name: Run live Playwright MCP guardrail tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          RUN_GUARDRAIL_LIVE: "1"
+          PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
+
+        run: |
+          python -m pytest \
+            -p anyio.pytest_plugin \
+            tests/guardrails/test_guardrail_live.py \
+            -v \
+            -s
+
+
+      # -----------------------------------------------------
+      # LIVE AI SAFETY RELEASE GATE
+      #
+      # This remains separate from MCP connectivity tests.
+      # -----------------------------------------------------
+
+      - name: Run live AI safety release gate
+        env:
+          PLAYWRIGHT_MCP_URL: http://localhost:8931/mcp
+          RUN_GUARDRAIL_LIVE: "1"
+
+        run: |
           python \
             scripts/run_session18_guardrail_gate.py \
             --live
+
+
+      # -----------------------------------------------------
+      # UPLOAD OLLAMA LOG
+      # -----------------------------------------------------
+
+      - name: Upload Ollama logs
+        if: always()
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: agent-safety-ollama-logs
+          path: /tmp/ollama.log
+          if-no-files-found: warn
+          retention-days: 7
+
+
+      # -----------------------------------------------------
+      # UPLOAD MCP LOG
+      # -----------------------------------------------------
+
+      - name: Upload Playwright MCP logs
+        if: always()
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: agent-safety-playwright-mcp-logs
+          path: /tmp/playwright-mcp.log
+          if-no-files-found: warn
+          retention-days: 7
+
+
+      # -----------------------------------------------------
+      # PRINT OLLAMA LOG ON FAILURE
+      # -----------------------------------------------------
+
+      - name: Print Ollama logs on failure
+        if: failure()
+
+        run: |
+          echo
+          echo "======================================"
+          echo "OLLAMA FAILURE LOG"
+          echo "======================================"
+
+          cat /tmp/ollama.log || true
+
+
+      # -----------------------------------------------------
+      # PRINT MCP LOG ON FAILURE
+      # -----------------------------------------------------
+
+      - name: Print Playwright MCP logs on failure
+        if: failure()
+
+        run: |
+          echo
+          echo "======================================"
+          echo "PLAYWRIGHT MCP FAILURE LOG"
+          echo "======================================"
+
+          cat /tmp/playwright-mcp.log || true
