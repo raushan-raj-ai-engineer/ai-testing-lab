@@ -11,35 +11,101 @@ on:
 
   workflow_dispatch:
 
+
 jobs:
+
   fast-quality:
+
     name: Sessions 19-25 Deterministic Quality
+
     runs-on: ubuntu-latest
 
+    timeout-minutes: 20
+
+    env:
+      PYTHONPATH: .
+
     steps:
+
+      # =====================================================
+      # CHECKOUT
+      # =====================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # =====================================================
+      # PYTHON
+      # =====================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Upgrade pip
-        run: |
-          python -m pip install --upgrade pip
+
+      # =====================================================
+      # DEPENDENCIES
+      # =====================================================
 
       - name: Install project dependencies
         run: |
-          python -m pip install -r requirements.txt
+          python -m pip install --upgrade pip
 
-      - name: Show Python environment
+          python -m pip install \
+            -r requirements.txt
+
+
+      # =====================================================
+      # VERIFY ENVIRONMENT
+      # =====================================================
+
+      - name: Verify Python environment
         run: |
+          echo "======================================"
+          echo "PYTHON ENVIRONMENT"
+          echo "======================================"
+
           python --version
+
           python -m pip --version
+
           python -m pytest --version
 
-          python -c "from mcp.types import TextContent; print('MCP import OK')"
+          echo
+          echo "======================================"
+          echo "REQUIRED TEST PLUGINS"
+          echo "======================================"
+
+          python -c "
+          import pytest
+          import pytest_asyncio
+          import anyio
+
+          from mcp import ClientSession
+          from ollama import chat
+
+          print('Pytest          : OK')
+          print('pytest-asyncio  : OK')
+          print('AnyIO           : OK')
+          print('MCP             : OK')
+          print('Ollama SDK      : OK')
+          "
+
+
+      # =====================================================
+      # DETERMINISTIC QUALITY TESTS
+      #
+      # IMPORTANT:
+      #
+      # -m filtering happens AFTER collection.
+      #
+      # Therefore live test files that depend on external
+      # MCP/Ollama services are explicitly ignored here.
+      #
+      # They belong in separate manual live workflows.
+      # =====================================================
 
       - name: Run Sessions 19-25 deterministic tests
         run: |
@@ -51,5 +117,7 @@ jobs:
             tests/ai_api_testing \
             tests/final_project \
             tests/interview_prep \
+            --ignore=tests/observability/test_observability_live.py \
+            --ignore=tests/reliability/test_reliability_live.py \
             -m "not observability_live and not reliability_live" \
             -v
