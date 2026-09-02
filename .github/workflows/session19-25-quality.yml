@@ -33,15 +33,13 @@ jobs:
         run: |
           python -m pip install -r requirements.txt
 
-      - name: Ensure pytest is installed
-        run: |
-          python -m pip install "pytest>=8,<10"
-
       - name: Show Python environment
         run: |
           python --version
           python -m pip --version
           python -m pytest --version
+
+          python -c "from mcp.types import TextContent; print('MCP import OK')"
 
       - name: Run Sessions 19-25 deterministic tests
         run: |
