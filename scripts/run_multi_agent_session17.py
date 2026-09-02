@@ -3,18 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 from uuid import uuid4
-
-from mcp import Client
-
-from src.multi_agent.orchestrator import (
-    run_multi_agent_system,
-)
-from src.multi_agent.quality import (
-    build_multi_agent_quality_report,
-    passes_multi_agent_quality_gate,
-)
 
 # =========================================================
 # PROJECT ROOT
@@ -29,8 +21,32 @@ if str(ROOT) not in sys.path:
     )
 
 
-def parse_args():
+# =========================================================
+# MCP IMPORTS
+# =========================================================
 
+from mcp import ClientSession  # noqa: E402
+from mcp.client.streamable_http import (  # noqa: E402
+    streamable_http_client,
+)
+
+# =========================================================
+# PROJECT IMPORTS
+# =========================================================
+from src.multi_agent.orchestrator import (  # noqa: E402
+    run_multi_agent_system,
+)
+from src.multi_agent.quality import (  # noqa: E402
+    build_multi_agent_quality_report,
+    passes_multi_agent_quality_gate,
+)
+
+# =========================================================
+# ARGUMENTS
+# =========================================================
+
+
+def parse_args():
     parser = argparse.ArgumentParser(
         description=("Run Session 17 multi-agent browser quality flow")
     )
@@ -38,31 +54,92 @@ def parse_args():
     parser.add_argument(
         "--goal",
         default=None,
+        help=("Optional multi-agent goal. A TodoMVC goal is generated if omitted."),
     )
 
     parser.add_argument(
         "--mcp-url",
-        default=("http://localhost:8931/mcp"),
+        default="http://localhost:8931/mcp",
+        help=("Playwright MCP Streamable HTTP endpoint."),
     )
 
     return parser.parse_args()
 
 
-async def async_main() -> int:
+# =========================================================
+# MCP CONNECTION
+# =========================================================
 
+
+@asynccontextmanager
+async def open_mcp_session(
+    mcp_url: str,
+) -> AsyncIterator[ClientSession]:
+    """
+    Open and initialize an MCP Streamable HTTP session.
+
+    New MCP SDK versions use:
+
+        streamable_http_client
+                ↓
+        ClientSession
+                ↓
+        initialize()
+
+    instead of the old:
+
+        Client(url)
+    """
+
+    async with streamable_http_client(
+        mcp_url,
+    ) as streams:
+        # Current MCP Streamable HTTP transport may return
+        # more than two items.
+        #
+        # ClientSession only needs:
+        #
+        # streams[0] -> read stream
+        # streams[1] -> write stream
+
+        read_stream = streams[0]
+        write_stream = streams[1]
+
+        async with ClientSession(
+            read_stream,
+            write_stream,
+        ) as session:
+            await session.initialize()
+
+            yield session
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+
+async def async_main() -> int:
     args = parse_args()
 
     goal = args.goal
+
+    # =====================================================
+    # GENERATE DEFAULT GOAL
+    # =====================================================
 
     if goal is None:
         todo_name = "Session17-" + uuid4().hex[:6]
 
         goal = f"Add {todo_name} and mark it complete"
 
-    print("\n=================================")
+    # =====================================================
+    # PRINT RUN INFORMATION
+    # =====================================================
 
+    print()
+    print("=================================")
     print("SESSION 17 MULTI-AGENT RUN")
-
     print("=================================")
 
     print(
@@ -70,18 +147,38 @@ async def async_main() -> int:
         goal,
     )
 
-    async with Client(args.mcp_url) as client:
+    print(
+        "MCP URL:",
+        args.mcp_url,
+    )
+
+    # =====================================================
+    # CONNECT TO PLAYWRIGHT MCP
+    # =====================================================
+
+    async with open_mcp_session(
+        args.mcp_url,
+    ) as client:
         result = await run_multi_agent_system(
             client=client,
             goal=goal,
         )
 
-    report = build_multi_agent_quality_report(result)
+    # =====================================================
+    # BUILD QUALITY REPORT
+    # =====================================================
 
-    print("\n=================================")
+    report = build_multi_agent_quality_report(
+        result,
+    )
 
+    # =====================================================
+    # PRINT QUALITY REPORT
+    # =====================================================
+
+    print()
+    print("=================================")
     print("MULTI-AGENT QUALITY REPORT")
-
     print("=================================")
 
     print(
@@ -101,7 +198,7 @@ async def async_main() -> int:
 
     print(
         "Task completion rate:",
-        f"{report.task_completion_rate:.2%}",
+        (f"{report.task_completion_rate:.2%}"),
     )
 
     print(
@@ -116,7 +213,7 @@ async def async_main() -> int:
 
     print(
         "Handoff success rate:",
-        f"{report.handoff_success_rate:.2%}",
+        (f"{report.handoff_success_rate:.2%}"),
     )
 
     print(
@@ -144,8 +241,13 @@ async def async_main() -> int:
         report.browser_quality_passed,
     )
 
+    # =====================================================
+    # ROUTING ERRORS
+    # =====================================================
+
     if result.routing_errors:
-        print("\nROUTING ERRORS:")
+        print()
+        print("ROUTING ERRORS:")
 
         for error in result.routing_errors:
             print(
@@ -153,8 +255,13 @@ async def async_main() -> int:
                 error,
             )
 
+    # =====================================================
+    # EXECUTION ERRORS
+    # =====================================================
+
     if result.errors:
-        print("\nEXECUTION ERRORS:")
+        print()
+        print("EXECUTION ERRORS:")
 
         for error in result.errors:
             print(
@@ -162,18 +269,30 @@ async def async_main() -> int:
                 error,
             )
 
-    if passes_multi_agent_quality_gate(report):
-        print("\nMULTI-AGENT RELEASE: PASS ✅")
+    # =====================================================
+    # RELEASE QUALITY GATE
+    # =====================================================
+
+    if passes_multi_agent_quality_gate(
+        report,
+    ):
+        print()
+        print("MULTI-AGENT RELEASE: PASS ✅")
 
         return 0
 
-    print("\nMULTI-AGENT RELEASE: FAIL ❌")
+    print()
+    print("MULTI-AGENT RELEASE: FAIL ❌")
 
     return 1
 
 
-def main():
+# =========================================================
+# ENTRY POINT
+# =========================================================
 
+
+def main():
     exit_code = asyncio.run(async_main())
 
     raise SystemExit(exit_code)
